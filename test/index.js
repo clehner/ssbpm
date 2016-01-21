@@ -5,19 +5,41 @@ var tape = require('tape')
 var createSbot = require('scuttlebot')
   .use(require('scuttlebot/plugins/master'))
 
-tape('api', function (t) {
+tape('test ssbpm api', function (t) {
 
-  var developer = createSbot({
-    temp: 'test-invite-alice', timeout: 200,
+  var aliceKeys = ssbKeys.generate()
+  var sbot = createSbot({
+    temp: 'test-ssbpm', timeout: 200,
     allowPrivate: true,
-    keys: ssbKeys.generate()
+    keys: aliceKeys
   })
 
-  createSsbpm(developer, function (err, ssbpm) {
+  createSsbpm(sbot, function (err, ssbpm) {
     if (err) throw err
 
-    developer.close(true)
-    t.end()
+    // publish a package
+    var module = {}
+    ssbpm.publish(module, function (err, moduleId) {
+      if (err) throw err
 
+      // load the package from another client
+      createSbot.createClient({keys: aliceKeys})
+      (sbot.getAddress(), function (err, rpc) {
+        if (err) throw err
+
+        createSsbpm(rpc, function (err, ssbpmA) {
+          if (err) throw err
+
+          ssbpmA.require(moduleId, function (err, moduleA) {
+
+            // the packages are the same
+            t.equal(moduleA && moduleA.type, "package")
+
+            sbot.close(true)
+            t.end()
+          })
+        })
+      })
+    })
   })
 })

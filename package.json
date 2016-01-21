@@ -1,0 +1,35 @@
+{
+  "name": "ssbpm",
+  "version": "0.0.0",
+  "description": "package manager for secure-scuttlebutt",
+  "main": "index.js",
+  "bin": "bin.js",
+  "scripts": {
+    "test": "tape test/*.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/clehner/ssbpm.git"
+  },
+  "keywords": [
+    "ssb",
+    "package",
+    "module",
+    "package",
+    "manager",
+    "secure-scuttlebutt"
+  ],
+  "author": "Charles Lehner (http://celehner.com/)",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/clehner/ssbpm/issues"
+  },
+  "devDependencies": {
+    "tape": "^4.4.0"
+  },
+  "dependencies": {
+    "scuttlebot": "^7.4.5",
+    "ssb-client": "^3.0.0",
+    "ssb-keys": "^4.0.10"
+  }
+}

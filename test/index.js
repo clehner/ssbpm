@@ -1,44 +1,54 @@
-var createSsbpm = require('../')
+var SSBPM = require('../')
 var ssbKeys = require('ssb-keys')
 var tape = require('tape')
+var path = require('path')
 
 var createSbot = require('scuttlebot')
   .use(require('scuttlebot/plugins/master'))
 
-tape('test ssbpm api', function (t) {
+var aliceKeys = ssbKeys.generate()
+var sbotOpts = {
+  temp: 'test-ssbpm', timeout: 200,
+  allowPrivate: true,
+  keys: aliceKeys
+}
+var sbot = createSbot(sbotOpts)
 
-  var aliceKeys = ssbKeys.generate()
-  var sbot = createSbot({
-    temp: 'test-ssbpm', timeout: 200,
-    allowPrivate: true,
-    keys: aliceKeys
-  })
+tape('publish a package and install it from another client', function (t) {
 
-  createSsbpm(sbot, function (err, ssbpm) {
-    if (err) throw err
+  var ssbpm = new SSBPM(sbot)
 
-    // publish a package
-    var module = {}
-    ssbpm.publish(module, function (err, moduleId) {
-      if (err) throw err
+  // publish a package from a directory
+  var srcPath = path.join(__dirname, './example')
+  ssbpm.publishFromFs(srcPath, function (err, pkgId) {
+    t.error(err, "publish from file system")
 
-      // load the package from another client
-      createSbot.createClient({keys: aliceKeys})
-      (sbot.getAddress(), function (err, rpc) {
-        if (err) throw err
+    // connect to the sbot from another client
+    createSbot.createClient({keys: aliceKeys})
+    (sbot.getAddress(), function (err, rpc) {
+      t.error(err, "connect a scuttlebot client")
 
-        createSsbpm(rpc, function (err, ssbpmA) {
-          if (err) throw err
+      // create directory to install into
+      // HACK: use sbot's temp directory
+      var destDir = path.join(sbotOpts.path, 'ssbpm-example')
 
-          ssbpmA.require(moduleId, function (err, moduleA) {
+      // install the package into the destination directory
+      var ssbpmA = new SSBPM(rpc)
+      ssbpmA.installToFs(pkgId, {
+        cwd: destDir
+      }, function (err, moduleA) {
+        t.error(err, "install to file system")
 
-            // the packages are the same
-            t.equal(moduleA && moduleA.type, "package")
+        // load modules using node's require
+        var example
+        t.doesNotThrow(function () {
+          example = require(destDir)
+        }, "require a module from the example program")
+        t.equal(example && example.increment(99), 100,
+          "run code from the example program")
 
-            sbot.close(true)
-            t.end()
-          })
-        })
+        sbot.close(true)
+        t.end()
       })
     })
   })

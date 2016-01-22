@@ -13,11 +13,9 @@
   },
   "keywords": [
     "ssb",
-    "package",
     "module",
     "package",
-    "manager",
-    "secure-scuttlebutt"
+    "manager"
   ],
   "author": "Charles Lehner (http://celehner.com/)",
   "license": "ISC",
@@ -28,8 +26,11 @@
     "tape": "^4.4.0"
   },
   "dependencies": {
+    "ignore-file": "^1.1.2",
+    "minimist": "^1.2.0",
     "scuttlebot": "^7.4.5",
     "ssb-client": "^3.0.0",
-    "ssb-keys": "^4.0.10"
+    "ssb-keys": "^4.0.10",
+    "ssb-ref": "^2.2.2"
   }
 }

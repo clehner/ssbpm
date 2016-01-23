@@ -3,6 +3,7 @@
 var argv = require('minimist')(process.argv.slice(2), {
   alias: {
     save: 'S',
+    force: 'f',
     help: 'h'
   }
 })
@@ -29,9 +30,9 @@ function usage (status) {
 if (argv._.length == 0 || argv.help)
   usage(0)
 else if (argv._[0] == 'install')
-  install(argv._.slice(1), argv._)
+  install(argv._.slice(1), argv)
 else if (argv._[0] == 'publish')
-  publish(argv._.slice(1), argv._)
+  publish(argv._.slice(1), argv)
 else
   usage(1)
 
@@ -58,16 +59,17 @@ function install(args, opt) {
 }
 
 function publish(args, opt) {
-  if (argv._.length > 2)
+  if (args.length > 1)
     return console.error('Publish one package at a time')
 
-  var path = argv._[1] || '.'
+  var path = args[0] || '.'
 
   createSsbClient(function (err, sbot) {
     if (err) throw err
 
     var ssbpm = new SSBPM(sbot)
     ssbpm.publishFromFs(path, {
+      force: opt.force,
       save: opt.save
     }, function (err, hash) {
       if (err) throw err

@@ -41,6 +41,33 @@ function readFileNoErr(filename) {
   }
 }
 
+function checkPackageJson(pkg) {
+  var ssbpmPkg = pkg.ssbpm || {}
+  var ssbpmDependencies = ssbpmPkg.dependencies || {}
+  var ssbpmDevDependencies = ssbpmPkg.devDependencies || {}
+  var notInDeps = []
+  var notInDevDeps = []
+
+  if (pkg.dependencies)
+    for (var name in pkg.dependencies)
+      if (!ssbpmDependencies[name])
+        notInDeps.push(name)
+
+  if (pkg.devDependencies)
+    for (var name in pkg.devDependencies)
+      if (!ssbpmDevDependencies[name])
+        notInDevDeps.push(name)
+
+  return [
+    notInDeps.length &&
+      '  Missing dependencies in pkg.ssbpm.dependencies:\n' +
+        '    ' + notInDeps.join(', '),
+    notInDevDeps.length &&
+      '  Missing dev dependencies in pkg.ssbpm.devDependencies:\n' +
+        '    ' + notInDevDeps.join(', ')
+  ].filter(Boolean).join('\n')
+}
+
 SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
   if (typeof opt == 'function') {
     cb = opt
@@ -73,6 +100,14 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
 
   function gotPackageJson(p) {
     pkg = p
+    var errs = checkPackageJson(pkg)
+    if (errs) {
+      if (opt.force)
+        console.error('Warning:\n' + errs)
+      else
+        throw errs
+    }
+
     if (pkg.files) {
       // package.json lists files
       for (var i = 0; i < pkg.files.length; i++) {

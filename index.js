@@ -127,6 +127,7 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
   }
 
   function addFile(file, cb) {
+    if (file == 'package.json') return cb(null, null)
     fs.stat(path.join(dir, file), function (err, stats) {
       if (err)
         return cb(explain(err, 'Unable to read file "' + file + '"'))
@@ -241,13 +242,15 @@ SSBPM.prototype.installToFs = function (key, opt, cb) {
     opt = {}
   }
 
-  var dir = opt.cwd || process.cwd()
+  var cwd = opt.cwd || process.cwd()
   var blobs = this.sbot.blobs
 
   SSBPM_getPkg.call(this, key, function (err, pkg) {
     if (err) return cb(err)
+    var name = pkg.name || key
     var ssbpmData = pkg.ssbpm || {}
     var fileHashes = ssbpmData.files || {}
+    var dir = path.join(cwd, 'node_modules', name)
     var done = multicb()
 
     for (var filename in fileHashes) {

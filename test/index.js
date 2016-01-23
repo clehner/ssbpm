@@ -46,7 +46,7 @@ tape('publish a package and install it from another client', function (t) {
         // load modules using node's require
         var example
         t.doesNotThrow(function () {
-          example = require(destDir)
+          example = require(path.join(destDir, 'node_modules', 'example-pkg'))
         }, 'require a module of the example package')
         t.equal(example && example.increment(99), 100,
           'run code from the example package')

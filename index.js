@@ -8,6 +8,15 @@ var mkdirp = require('mkdirp')
 
 module.exports = SSBPM
 
+function once(fn) {
+  var called = false
+  return function () {
+    if (called) return
+    called = true
+    fn.apply(this, arguments)
+  }
+}
+
 function SSBPM(sbot) {
   this.sbot = sbot
 }
@@ -76,7 +85,7 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
       addDir('.', done())
     }
 
-    done(gotFileStreams)
+    done(once(gotFileStreams))
   }
 
   function addFile(file, cb) {
@@ -126,14 +135,14 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
         done()()
     }
 
-    done(function (err, hashes) {
+    done(once(function (err, hashes) {
       var deps = {}
       for (var i = 0; i < results.length; i++) {
         if (results[i])
           deps[results[i].filename] = hashes[i]
       }
       gotDeps(deps)
-    })
+    }))
   }
 
   function gotDeps(deps) {
@@ -196,6 +205,6 @@ SSBPM.prototype.installToFs = function (key, opt, cb) {
     }
     var pkgJson = JSON.stringify(pkg, null, 2)
     fs.writeFile(path.join(dir, 'package.json'), pkgJson, done())
-    done(cb)
+    done(once(cb))
   })
 }

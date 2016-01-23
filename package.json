@@ -36,5 +36,13 @@
     "ssb-keys": "^4.0.10",
     "ssb-ref": "^2.2.2",
     "stream-to-pull-stream": "~1.6.5"
-  }
+  },
+  "files": [
+    "index.js",
+    "bin.js",
+    "LICENSE",
+    "defaultignore",
+    "test/index.js",
+    "test/example"
+  ]
 }

@@ -1,8 +1,9 @@
-// var path = require('path')
-var shasum = require('shasum')
 var fs = require('fs')
 var path = require('path')
 var ignore = require('ignore-file')
+var multicb = require('multicb')
+var pull = require('pull-stream')
+var toPull = require('stream-to-pull-stream')
 
 module.exports = SSBPM
 
@@ -33,22 +34,10 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
     opt = {}
   }
 
-  var waiting = 0
-  var aborted = false
-
-  function waited() {
-    if (!--waiting && !aborted)
-      done()
-  }
-
-  function abort(err) {
-    if (!aborted) {
-      aborted = true
-      cb(err)
-    }
-  }
-
   var ignoreFilter = function () { return false }
+  var done = multicb({pluck: 1})
+  var sbot = this.sbot
+  var pkg
 
   var pkgJsonPath = path.join(dir, 'package.json')
   fs.exists(pkgJsonPath, function (exists) {
@@ -69,12 +58,13 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
       gotPackageJson({})
   })
 
-  function gotPackageJson(pkg) {
+  function gotPackageJson(p) {
+    pkg = p
     if (pkg.files) {
       // package.json lists files
-      waiting++
-      pkg.files.map(path.join.bind(path, dir)).forEach(addRegularFile)
-      waited()
+      for (var i = 0; i < pkg.files.length; i++) {
+        addRegularFile(path.join(dir, pkg.files[i]), done())
+      }
     } else {
       // walk the fs to get the list of files, respecting the ignore list
       // https://docs.npmjs.com/misc/developers#keeping-files-out-of-your-package
@@ -82,51 +72,78 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
         (readFileNoErr(path.join(dir, '.npmignore')) ||
          readFileNoErr(path.join(dir, '.gitignore')))
       ignoreFilter = ignore.compile(ignores)
-      addDir('.')
+      addDir('.', done())
     }
+
+    done(gotFileStreams)
   }
 
-  function addFile(file) {
-    waiting++
+  function addFile(file, cb) {
     fs.stat(path.join(dir, file), function (err, stats) {
       if (err)
-        return abort(new Error('Unable to read file "' + file + '"'))
+        return cb(new Error('Unable to read file "' + file + '"'))
 
       if (stats.isFile())
-        addRegularFile(file)
+        addRegularFile(file, cb)
       else if (stats.isDirectory())
-        addDir(file)
-      waited()
+        addDir(file, cb)
     })
   }
 
-  function addRegularFile(file) {
-    waiting++
-    if (aborted) return
-    fs.readFile(path.join(dir, file), function (err, buffer) {
-      var sum = shasum(buffer)
-
-      waited()
+  function addRegularFile(file, cb) {
+    cb(null, {
+      filename: file,
+      stream: fs.createReadStream(path.join(dir, file))
     })
   }
 
-  function addDir(currentDir) {
-    waiting++
+  function addDir(currentDir, cb) {
     fs.readdir(path.join(dir, currentDir), function (err, files) {
       if (err)
         return cb(new Error('Unable to read directory "' + currentDir + '"'))
-      files.map(function (filename) {
-        return path.join(currentDir, filename)
-      }).filter(function (filename) {
-        return !ignoreFilter(filename)
-      }).forEach(addFile)
-      waited()
+      for (var i = 0; i < files.length; i++) {
+        var filename = path.join(currentDir, files[i])
+        if (!ignoreFilter(filename))
+          addFile(filename, done())
+      }
+      cb(null, null) // TODO: save permissions of the directory
     })
   }
 
-  function done() {
-    console.log('ok done')
-    cb(new Error('Not implemented'), null)
+  function gotFileStreams(err, results) {
+    // TODO: hash the file and check if it is unchanged since the previous
+    // package version
+
+    var done = multicb({pluck: 1})
+    for (var i = 0; i < results.length; i++) {
+      var stream = results[i] && results[i].stream
+      if (stream)
+        pull(
+          toPull(stream),
+          sbot.blobs.add(done()))
+      else
+        done()()
+    }
+    done(function (err, hashes) {
+      var deps = {}
+      for (var i = 0; i < results.length; i++) {
+        if (results[i])
+          deps[results[i].filename] = hashes[i]
+      }
+      gotDeps(deps)
+    })
+  }
+
+  function gotDeps(deps) {
+    (pkg.ssbpm || (pkg.ssbpm = {})).dependencies = deps
+    var msg = {
+      type: 'package',
+      pkg: pkg
+    }
+    sbot.publish(msg, function (err, data) {
+      if (err) return cb(new Error('Unable to publish package: ' + err))
+      cb(null, data.key)
+    })
   }
 }
 

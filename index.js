@@ -200,6 +200,14 @@ function writeBlob(blobs, hash, filename, cb) {
   })
 }
 
+function writeFile(filename, data, cb) {
+  mkdirp(path.dirname(filename), function (err) {
+    if (err)
+      return cb(new Error('Unable to create directory for blob: ' + err))
+    fs.writeFile(filename, data, cb)
+  })
+}
+
 SSBPM.prototype.installToFs = function (key, opt, cb) {
   if (typeof opt == 'function') {
     cb = opt
@@ -218,8 +226,10 @@ SSBPM.prototype.installToFs = function (key, opt, cb) {
     for (var filename in fileHashes) {
       writeBlob(blobs, fileHashes[filename], path.join(dir, filename), done())
     }
+
     var pkgJson = JSON.stringify(pkg, null, 2)
-    fs.writeFile(path.join(dir, 'package.json'), pkgJson, done())
+    writeFile(path.join(dir, 'package.json'), pkgJson, done())
+
     done(once(cb))
   })
 }

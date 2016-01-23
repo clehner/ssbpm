@@ -33,15 +33,6 @@ function SSBPM(sbot) {
   this.sbot = sbot
 }
 
-SSBPM.prototype.publish = function (pkg, cb) {
-  this.sbot.publish({
-    type: 'package'
-  }, function (err, msg) {
-    if (err) return cb(explain(err, 'Unable to publish package'))
-    cb(null, msg.key)
-  })
-}
-
 function readFileNoErr(filename) {
   try {
     return fs.readFileSync(filename)

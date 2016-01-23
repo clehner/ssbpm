@@ -73,7 +73,7 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
     if (pkg.files) {
       // package.json lists files
       for (var i = 0; i < pkg.files.length; i++) {
-        addRegularFile(path.join(dir, pkg.files[i]), done())
+        addFile(path.join(dir, pkg.files[i]), done())
       }
     } else {
       // walk the fs to get the list of files, respecting the ignore list

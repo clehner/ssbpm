@@ -12,7 +12,6 @@ var SSBPM = require('.')
 var path = require('path')
 var config  = require('ssb-config/inject')(process.env.ssb_appname)
 
-
 function createSsbClient(cb) {
   var keys = ssbKeys.loadOrCreateSync(path.join(config.path, 'secret'))
   require('ssb-client')(keys, {

@@ -1,4 +1,5 @@
 var fs = require('fs')
+var crypto = require('crypto')
 var path = require('path')
 var ignore = require('ignore-file')
 var multicb = require('multicb')
@@ -15,6 +16,16 @@ function once(fn) {
     called = true
     fn.apply(this, arguments)
   }
+}
+
+function createHash () {
+  var hash = crypto.createHash('sha256')
+  var hasher = pull.through(function (data) {
+    hash.update(data)
+  }, function () {
+    hasher.digest = '&'+hash.digest('base64')+'.sha256'
+  })
+  return hasher
 }
 
 function SSBPM(sbot) {
@@ -121,32 +132,35 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
   }
 
   function gotFileStreams(err, results) {
-    // TODO: hash the file and check if it is unchanged since the previous
-    // package version
-
+    // Use hasher to get ID since blobs RPC doesn't callback on return.
+    // See also https://github.com/ssbc/scuttlebot/pull/286
     var done = multicb({pluck: 1})
-    for (var i = 0; i < results.length; i++) {
-      var stream = results[i] && results[i].stream
-      if (stream)
-        pull(
-          toPull(stream),
-          sbot.blobs.add(done()))
-      else
-        done()()
-    }
+    results.forEach(function (result) {
+      var stream = result && result.stream
+      var cb = done()
+      if (!stream)
+        return cb()
+      var hasher = createHash()
+      pull(
+        toPull(stream),
+        hasher,
+        sbot.blobs.add(function (err) {
+          cb(err, hasher.digest)
+        }))
+    })
 
     done(once(function (err, hashes) {
-      var deps = {}
+      var fileHashes = {}
       for (var i = 0; i < results.length; i++) {
         if (results[i])
-          deps[results[i].filename] = hashes[i]
+          fileHashes[results[i].filename] = hashes[i]
       }
-      gotDeps(deps)
+      gotFileHashes(fileHashes)
     }))
   }
 
-  function gotDeps(deps) {
-    (pkg.ssbpm || (pkg.ssbpm = {})).dependencies = deps
+  function gotFileHashes(files) {
+    (pkg.ssbpm || (pkg.ssbpm = {})).files = files
     var msg = {
       type: 'package',
       pkg: pkg
@@ -198,10 +212,11 @@ SSBPM.prototype.installToFs = function (key, opt, cb) {
   SSBPM_getPkg.call(this, key, function (err, pkg) {
     if (err) return cb(err)
     var ssbpmData = pkg.ssbpm || {}
-    var deps = ssbpmData.dependencies
+    var fileHashes = ssbpmData.files || {}
     var done = multicb()
-    if (deps) for (var filename in deps) {
-      writeBlob(blobs, deps[filename], path.join(dir, filename), done())
+
+    for (var filename in fileHashes) {
+      writeBlob(blobs, fileHashes[filename], path.join(dir, filename), done())
     }
     var pkgJson = JSON.stringify(pkg, null, 2)
     fs.writeFile(path.join(dir, 'package.json'), pkgJson, done())

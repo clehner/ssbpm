@@ -7,7 +7,19 @@ var argv = require('minimist')(process.argv.slice(2), {
   }
 })
 var ref = require('ssb-ref')
+var ssbKeys = require('ssb-keys')
 var SSBPM = require('.')
+var path = require('path')
+var config  = require('ssb-config/inject')(process.env.ssb_appname)
+
+
+function createSsbClient(cb) {
+  var keys = ssbKeys.loadOrCreateSync(path.join(config.path, 'secret'))
+  require('ssb-client')(keys, {
+    port: config.port,
+    host: config.host || 'localhost'
+  }, cb)
+}
 
 function usage (status) {
   console.log('Install a package: ssbpm install {hash...}')
@@ -33,7 +45,7 @@ function install(args, opt) {
   if (!ref.isMsg(msg))
     return console.error('Invalid message ID "' + msg + '"')
 
-  require('ssb-client')(function (err, sbot) {
+  createSsbClient(function (err, sbot) {
     if (err) throw err
 
     var ssbpm = new SSBPM(sbot)
@@ -52,7 +64,7 @@ function publish(args, opt) {
 
   var path = argv._[1] || '.'
 
-  require('ssb-client')(function (err, sbot) {
+  createSsbClient(function (err, sbot) {
     if (err) throw err
 
     var ssbpm = new SSBPM(sbot)

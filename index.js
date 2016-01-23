@@ -31,6 +31,12 @@ function createHash () {
 
 function SSBPM(sbot) {
   this.sbot = sbot
+  this.packageCache = {
+    /* hash: require */
+  }
+  this.packageWaiting = {
+    /* hash: [cb] */
+  }
 }
 
 function readFileNoErr(filename) {
@@ -210,10 +216,99 @@ function SSBPM_getPkg(key, cb) {
   })
 }
 
-SSBPM.prototype.require = function (key, cb) {
+function loadBlob(blobs, hash, name, store, cb) {
+  pull(
+    blobs.get(hash),
+    pull.collect(function (err, ary) {
+      if (err) return cb(err)
+      store[name] = Buffer.concat(ary)
+      cb(null)
+    })
+  )
+}
+
+function SSBPM_getPkgRequire(key, cb) {
+  var blobs = this.sbot.blobs
+  var fileData = {}
+
+  var pkgCache = this.packageCache
+  if (pkgCache[key])
+    return cb(null, pkgCache[key])
+
+  // if this function is already running, wait for it
+  if (this.packageWaiting[key])
+    return void this.packageWaiting[key].push(cb)
+
+  var cbs = this.packageWaiting = [cb]
+  cb = function (err, require) {
+    pkgCache[key] = require
+    while (cbs.length)
+      cbs.shift()(err, require)
+    delete this.packageWaiting
+  }
+
   SSBPM_getPkg.call(this, key, function (err, pkg) {
     if (err) return cb(err)
-    cb(new Error('Not yet implemented'), pkg)
+    var ssbpmData = pkg.ssbpm || {}
+    var fileHashes = ssbpmData.files || {}
+    var done = multicb()
+    fileData['package.json'] = pkg
+
+    // Load files from blobs, but don't execute JS in them yet.
+    // Just get them ready so they can be loaded synchronously
+    for (var filename in fileHashes) {
+      loadBlob(blobs, fileHashes[filename], filename, fileData, done())
+    }
+
+    // TODO: load dependencies recursively
+
+    done(once(function (err) {
+      if (err) return cb(err)
+      cb(err, require)
+    }))
+  })
+
+  function getModule(name) {
+    // try js
+    // try json
+    var buf = fileData[name]
+
+    // TODO
+
+    return buf
+  }
+
+  function require(name) {
+    var module = getModule(path.normalize(name))
+    if (!module) {
+      var err = new Error('Cannot find module \'' + name + '\'')
+      err.code = 'MODULE_NOT_FOUND'
+      throw err
+    }
+    return module
+  }
+}
+
+SSBPM.prototype.require = function (moduleName, cb) {
+  var i = moduleName.indexOf('/'), key, modulePath
+  if (i !== -1) {
+    key = moduleName.substr(0, i)
+    modulePath = moduleName.substr(i + 1)
+  } else {
+    key = moduleName
+    modulePath = '.'
+  }
+
+  SSBPM_getPkgRequire.call(this, key, function (err, require) {
+    if (err)
+      return cb(err)
+    var module
+    try {
+      module = require(modulePath)
+    } catch(e) {
+      return cb(e)
+    }
+    cb(null, module)
   })
 }
 

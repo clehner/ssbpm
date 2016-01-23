@@ -4,6 +4,7 @@ var ignore = require('ignore-file')
 var multicb = require('multicb')
 var pull = require('pull-stream')
 var toPull = require('stream-to-pull-stream')
+var mkdirp = require('mkdirp')
 
 module.exports = SSBPM
 
@@ -124,6 +125,7 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
       else
         done()()
     }
+
     done(function (err, hashes) {
       var deps = {}
       for (var i = 0; i < results.length; i++) {
@@ -147,11 +149,31 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
   }
 }
 
-SSBPM.prototype.require = function (key, cb) {
+function SSBPM_getPkg(key, cb) {
   this.sbot.get(key, function (err, msg) {
-    if (err) return cb(new Error('Unable to get package'), null)
-    var pkg = msg.content
-    cb(null, pkg)
+    if (err)
+      return cb(new Error('Unable to get package: ' + err))
+    if (!msg || msg.content.type != 'package' || !msg.content.pkg)
+      return cb(new Error('Message "' + key + '" is not a package'))
+    cb(null, msg.content.pkg)
+  })
+}
+
+SSBPM.prototype.require = function (key, cb) {
+  SSBPM_getPkg.call(this, key, function (err, pkg) {
+    if (err) return cb(err)
+    cb(new Error('Not yet implemented'), pkg)
+  })
+}
+
+function writeBlob(blobs, hash, filename, cb) {
+  mkdirp(path.dirname(filename), function (err) {
+    if (err)
+      return cb(new Error('Unable to create directory for blob: ' + err))
+    pull(
+      blobs.get(hash),
+      toPull.sink(fs.createWriteStream(filename), cb)
+    )
   })
 }
 
@@ -162,9 +184,18 @@ SSBPM.prototype.installToFs = function (key, opt, cb) {
   }
 
   var dir = opt.cwd || process.cwd()
+  var blobs = this.sbot.blobs
 
-  this.require(key, function (err, pkg) {
+  SSBPM_getPkg.call(this, key, function (err, pkg) {
     if (err) return cb(err)
-    cb(new Error('Not implemented'))
+    var ssbpmData = pkg.ssbpm || {}
+    var deps = ssbpmData.dependencies
+    var done = multicb()
+    if (deps) for (var filename in deps) {
+      writeBlob(blobs, deps[filename], path.join(dir, filename), done())
+    }
+    var pkgJson = JSON.stringify(pkg, null, 2)
+    fs.writeFile(path.join(dir, 'package.json'), pkgJson, done())
+    done(cb)
   })
 }

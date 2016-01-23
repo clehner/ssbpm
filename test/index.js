@@ -27,7 +27,6 @@ tape('publish a package and install it from another client', function (t) {
 
     t.ok(ref.isMsg(pkgId), 'package is a message')
 
-    /*
     // connect to the sbot from another client
     createSbot.createClient({keys: aliceKeys})
     (sbot.getAddress(), function (err, rpc) {
@@ -52,12 +51,9 @@ tape('publish a package and install it from another client', function (t) {
         t.equal(example && example.increment(99), 100,
           'run code from the example package')
 
-    */
         sbot.close(true)
         t.end()
-        /*
       })
     })
-    */
   })
 })

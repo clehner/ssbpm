@@ -1,5 +1,5 @@
 // var path = require('path')
-// var shasum = require('shasum')
+var shasum = require('shasum')
 var fs = require('fs')
 var path = require('path')
 var ignore = require('ignore-file')
@@ -19,19 +19,6 @@ SSBPM.prototype.publish = function (pkg, cb) {
   })
 }
 
-// if a file name is in an array, remove it and read it
-function extractFile(dir, files, filename, cb) {
-  var i = files.indexOf(filename)
-  if (i == -1)
-    return cb(null, null)
-  files.splice(i, 1)
-  var file = path.join(dir, filename)
-  fs.readFile(file, {encoding: 'utf8'}, function (err, data) {
-    if (err) return cb(new Error('Unable to read ' + filename))
-    cb(null, data)
-  })
-}
-
 function readFileNoErr(filename) {
   try {
     return fs.readFileSync(filename)
@@ -46,36 +33,101 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
     opt = {}
   }
 
-  fs.readdir(dir, function (err, files) {
-    if (err) return cb(new Error('Unable to read directory "' + dir + '"'))
+  var waiting = 0
+  var aborted = false
 
-    extractFile(dir, files, 'package.json', function (err, data) {
-      if (err) return cb(new Error('Unable to read package.json'))
-      var pkg
-      if (data)
-        try {
-          pkg = JSON.parse(data)
-        } catch(e) {
-          return cb(new Error('Unable to parse package.json'))
+  function waited() {
+    if (!--waiting && !aborted)
+      done()
+  }
+
+  function abort(err) {
+    if (!aborted) {
+      aborted = true
+      cb(err)
+    }
+  }
+
+  var ignoreFilter = function () { return false }
+
+  var pkgJsonPath = path.join(dir, 'package.json')
+  fs.exists(pkgJsonPath, function (exists) {
+    if (exists)
+      fs.readFile(pkgJsonPath, {encoding: 'utf8'}, function (err, data) {
+        if (err) return cb(new Error('Unable to read package.json'))
+        var pkg
+        if (data) {
+          try {
+            pkg = JSON.parse(data)
+          } catch(e) {
+            return cb(new Error('Unable to parse package.json'))
+          }
         }
-      if (!pkg)
-        pkg = {}
-
-      if (pkg.files) {
-        files = pkg.files
-      } else {
-        var ignores = readFileNoErr(path.join(__dirname, 'defaultignore')) + 
-          (readFileNoErr(path.join(dir, '.npmignore')) || 
-           readFileNoErr(path.join(dir, '.gitignore')))
-        var ignoreFilter = ignore.compile(ignores)
-        files = files.filter(function (filename) {
-          return !ignoreFilter(filename)
-        })
-      }
-
-      cb(new Error('Not implemented'), null)
-    })
+        gotPackageJson(pkg || {})
+      })
+    else
+      gotPackageJson({})
   })
+
+  function gotPackageJson(pkg) {
+    if (pkg.files) {
+      // package.json lists files
+      waiting++
+      pkg.files.map(path.join.bind(path, dir)).forEach(addRegularFile)
+      waited()
+    } else {
+      // walk the fs to get the list of files, respecting the ignore list
+      // https://docs.npmjs.com/misc/developers#keeping-files-out-of-your-package
+      var ignores = readFileNoErr(path.join(__dirname, 'defaultignore')) +
+        (readFileNoErr(path.join(dir, '.npmignore')) ||
+         readFileNoErr(path.join(dir, '.gitignore')))
+      ignoreFilter = ignore.compile(ignores)
+      addDir('.')
+    }
+  }
+
+  function addFile(file) {
+    waiting++
+    fs.stat(path.join(dir, file), function (err, stats) {
+      if (err)
+        return abort(new Error('Unable to read file "' + file + '"'))
+
+      if (stats.isFile())
+        addRegularFile(file)
+      else if (stats.isDirectory())
+        addDir(file)
+      waited()
+    })
+  }
+
+  function addRegularFile(file) {
+    waiting++
+    if (aborted) return
+    fs.readFile(path.join(dir, file), function (err, buffer) {
+      var sum = shasum(buffer)
+
+      waited()
+    })
+  }
+
+  function addDir(currentDir) {
+    waiting++
+    fs.readdir(path.join(dir, currentDir), function (err, files) {
+      if (err)
+        return cb(new Error('Unable to read directory "' + currentDir + '"'))
+      files.map(function (filename) {
+        return path.join(currentDir, filename)
+      }).filter(function (filename) {
+        return !ignoreFilter(filename)
+      }).forEach(addFile)
+      waited()
+    })
+  }
+
+  function done() {
+    console.log('ok done')
+    cb(new Error('Not implemented'), null)
+  }
 }
 
 SSBPM.prototype.require = function (key, cb) {

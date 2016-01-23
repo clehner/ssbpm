@@ -210,14 +210,23 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
   }
 
   function gotFileHashes(files) {
-    (pkg.ssbpm || (pkg.ssbpm = {})).files = files
+    setKeyPath(pkg, ['ssbpm', 'files', files])
     var msg = {
       type: 'package',
       pkg: pkg
     }
     sbot.publish(msg, function (err, data) {
-      if (err) return cb(explain(err, 'Unable to publish package'))
-      cb(null, data.key)
+      if (err)
+        return cb(explain(err, 'Unable to publish package'))
+
+      if (!opt.save)
+        return cb(null, data.key)
+
+      setKeyPath(pkg, ['ssbpm', 'parent', data.key])
+      writePackageJson(dir, pkg, function (err) {
+        if (err) return cb(explain(err, 'Unable to write package.json'))
+        cb(null, data.key)
+      })
     })
   }
 }

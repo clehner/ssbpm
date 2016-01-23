@@ -22,13 +22,19 @@ var examplePkgId
 
 tape('publish a package and install it from another client', function (t) {
 
-  // publish a package from a directory
   var srcPath = path.join(__dirname, './example')
+  var pkgJsonFilename = path.join(srcPath, 'package.json')
+  var pkgJson = fs.readFileSync(pkgJsonFilename)
+
+  // publish a package from a directory
   ssbpm.publishFromFs(srcPath, function (err, pkgId) {
     t.error(err, 'publish from file system')
 
     t.ok(ref.isMsg(pkgId), 'package is a message')
     examplePkgId = pkgId
+
+    t.looseEqual(pkgJson, fs.readFileSync(pkgJsonFilename),
+      'package.json is unchanged')
 
     // connect to the sbot from another client
     createSbot.createClient({keys: aliceKeys})
@@ -101,10 +107,36 @@ tape('install package using save option', function (t) {
             'example-pkg': examplePkgId
           }
         }
-      })
+      }, 'parent package.json updated with new dependency')
 
       t.end()
     })
+  })
+})
+
+tape('republish package using save option', function (t) {
+  var dir = path.join(sbotOpts.path, 'ssbpm-example',
+    'node_modules', 'example-pkg')
+  ssbpm.publishFromFs(dir, {
+    save: true
+  }, function (err, pkgId) {
+    t.error(err, 'publish from file system')
+    t.ok(ref.isMsg(pkgId), 'package is a message')
+
+    var pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json')))
+    t.deepEqual(pkg, {
+      name: 'example-pkg',
+      ssbpm: {
+        parent: pkgId,
+        files: {
+          'increment.js': '&DSe9Y+ARtob08O5HDBKlt+9qV3P5fUhioQ74Gt6ikrQ=.sha256',
+          'index.js': '&i6F9oYlUl5a5NoljNpzEaiBYnPJzHXK7k95voNwNnrE=.sha256',
+          'math.js': '&jItX2xxGJPfxLOEHI5yV7fVweRwVeAu8hSG7QLekwYw=.sha256'
+        }
+      }
+    }, 'package.json updated with info about published package')
+
+    t.end()
   })
 })
 

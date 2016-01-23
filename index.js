@@ -6,6 +6,7 @@ var multicb = require('multicb')
 var pull = require('pull-stream')
 var toPull = require('stream-to-pull-stream')
 var mkdirp = require('mkdirp')
+var explain = require('explain-error')
 
 module.exports = SSBPM
 
@@ -36,7 +37,7 @@ SSBPM.prototype.publish = function (pkg, cb) {
   this.sbot.publish({
     type: 'package'
   }, function (err, msg) {
-    if (err) return cb(new Error('Unable to publish package'), null)
+    if (err) return cb(explain(err, 'Unable to publish package'))
     cb(null, msg.key)
   })
 }
@@ -64,13 +65,13 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
   fs.exists(pkgJsonPath, function (exists) {
     if (exists)
       fs.readFile(pkgJsonPath, {encoding: 'utf8'}, function (err, data) {
-        if (err) return cb(new Error('Unable to read package.json'))
+        if (err) return cb(explain(err, 'Unable to read package.json'))
         var pkg
         if (data) {
           try {
             pkg = JSON.parse(data)
           } catch(e) {
-            return cb(new Error('Unable to parse package.json'))
+            return cb(explain(err, 'Unable to parse package.json'))
           }
         }
         gotPackageJson(pkg || {})
@@ -102,7 +103,7 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
   function addFile(file, cb) {
     fs.stat(path.join(dir, file), function (err, stats) {
       if (err)
-        return cb(new Error('Unable to read file "' + file + '"'))
+        return cb(explain(err, 'Unable to read file "' + file + '"'))
 
       if (stats.isFile())
         addRegularFile(file, cb)
@@ -121,7 +122,7 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
   function addDir(currentDir, cb) {
     fs.readdir(path.join(dir, currentDir), function (err, files) {
       if (err)
-        return cb(new Error('Unable to read directory "' + currentDir + '"'))
+        return cb(explain(err, 'Unable to read directory "' + currentDir + '"'))
       for (var i = 0; i < files.length; i++) {
         var filename = path.join(currentDir, files[i])
         if (!ignoreFilter(filename))
@@ -166,7 +167,7 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
       pkg: pkg
     }
     sbot.publish(msg, function (err, data) {
-      if (err) return cb(new Error('Unable to publish package: ' + err))
+      if (err) return cb(explain(err, 'Unable to publish package: ' + err))
       cb(null, data.key)
     })
   }
@@ -175,7 +176,7 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
 function SSBPM_getPkg(key, cb) {
   this.sbot.get(key, function (err, msg) {
     if (err)
-      return cb(new Error('Unable to get package: ' + err))
+      return cb(explain(err, 'Unable to get package'))
     if (!msg || msg.content.type != 'package' || !msg.content.pkg)
       return cb(new Error('Message "' + key + '" is not a package'))
     cb(null, msg.content.pkg)
@@ -192,7 +193,7 @@ SSBPM.prototype.require = function (key, cb) {
 function writeBlob(blobs, hash, filename, cb) {
   mkdirp(path.dirname(filename), function (err) {
     if (err)
-      return cb(new Error('Unable to create directory for blob: ' + err))
+      return cb(explain(err, 'Unable to create directory for blob: ' + err))
     pull(
       blobs.get(hash),
       toPull.sink(fs.createWriteStream(filename), cb)
@@ -203,7 +204,7 @@ function writeBlob(blobs, hash, filename, cb) {
 function writeFile(filename, data, cb) {
   mkdirp(path.dirname(filename), function (err) {
     if (err)
-      return cb(new Error('Unable to create directory for blob: ' + err))
+      return cb(explain(err, 'Unable to create directory for blob: ' + err))
     fs.writeFile(filename, data, cb)
   })
 }

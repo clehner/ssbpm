@@ -3,6 +3,7 @@ var ssbKeys = require('ssb-keys')
 var tape = require('tape')
 var path = require('path')
 var ref = require('ssb-ref')
+var fs = require('fs')
 
 var createSbot = require('scuttlebot')
   .use(require('scuttlebot/plugins/master'))
@@ -15,10 +16,11 @@ var sbotOpts = {
   keys: aliceKeys
 }
 var sbot = createSbot(sbotOpts)
+var ssbpm = new SSBPM(sbot)
+
+var examplePkgId
 
 tape('publish a package and install it from another client', function (t) {
-
-  var ssbpm = new SSBPM(sbot)
 
   // publish a package from a directory
   var srcPath = path.join(__dirname, './example')
@@ -26,6 +28,7 @@ tape('publish a package and install it from another client', function (t) {
     t.error(err, 'publish from file system')
 
     t.ok(ref.isMsg(pkgId), 'package is a message')
+    examplePkgId = pkgId
 
     // connect to the sbot from another client
     createSbot.createClient({keys: aliceKeys})
@@ -43,6 +46,9 @@ tape('publish a package and install it from another client', function (t) {
       }, function (err, moduleA) {
         t.error(err, 'install to file system')
 
+        t.equals(fs.existsSync(path.join(destDir, 'package.json')), false,
+          'parent package.json not created')
+
         // load modules using node's require
         var example
         t.doesNotThrow(function () {
@@ -57,7 +63,6 @@ tape('publish a package and install it from another client', function (t) {
           t.error(err, 'load module using ssbpm require')
           */
 
-          sbot.close(true)
           t.end()
           /*
         })
@@ -65,4 +70,45 @@ tape('publish a package and install it from another client', function (t) {
       })
     })
   })
+})
+
+tape('install package using save option', function (t) {
+  var destDir = path.join(sbotOpts.path, 'ssbpm-example-1')
+  ssbpm.installToFs(examplePkgId, {
+    cwd: destDir,
+    save: true
+  }, function (err, moduleA) {
+    t.error(err, 'install to file system')
+
+    // parent dir's json should be created since the save option was used
+    fs.readFile(path.join(destDir, 'package.json'), {
+      encoding: 'utf8'
+    }, function (err, data) {
+      t.error(err, 'load parent package.json')
+      var pkg
+      try {
+        pkg = JSON.parse(data)
+      } catch(e) {
+        t.error(e, 'parse parent package.json')
+      }
+
+      t.deepEqual(pkg, {
+        dependencies: {
+          'example-pkg': '*'
+        },
+        ssbpm: {
+          dependencies: {
+            'example-pkg': examplePkgId
+          }
+        }
+      })
+
+      t.end()
+    })
+  })
+})
+
+tape('close ssb client connection', function (t) {
+  sbot.close(true)
+  t.end()
 })

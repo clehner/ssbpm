@@ -47,6 +47,39 @@ function readFileNoErr(filename) {
   }
 }
 
+function readPackageJson(dir, cb) {
+  var filename = path.join(dir, 'package.json')
+  fs.exists(filename, function (exists) {
+    if (!exists) return cb(null, {})
+    fs.readFile(filename, {encoding: 'utf8'}, function (err, data) {
+      if (err) return cb(err)
+      if (!data) return cb(null, {})
+      var pkg
+      try {
+        pkg = JSON.parse(data)
+      } catch(e) {
+        return cb(err)
+      }
+      cb(null, pkg || {})
+    })
+  })
+}
+
+function writePackageJson(dir, pkg, cb) {
+  var json
+  try {
+    json = JSON.stringify(pkg, null, 2)
+  } catch(e) {
+    return cb(e)
+  }
+  mkdirp(dir, function (err) {
+    if (err)
+      return cb(explain(err, 'Unable to create directory for package.json'))
+    var filename = path.join(dir, 'package.json')
+    fs.writeFile(filename, json, cb)
+  })
+}
+
 function checkPackageJson(pkg) {
   var ssbpmPkg = pkg.ssbpm || {}
   var ssbpmDependencies = ssbpmPkg.dependencies || {}
@@ -85,26 +118,9 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
   var sbot = this.sbot
   var pkg
 
-  var pkgJsonPath = path.join(dir, 'package.json')
-  fs.exists(pkgJsonPath, function (exists) {
-    if (exists)
-      fs.readFile(pkgJsonPath, {encoding: 'utf8'}, function (err, data) {
-        if (err) return cb(explain(err, 'Unable to read package.json'))
-        var pkg
-        if (data) {
-          try {
-            pkg = JSON.parse(data)
-          } catch(e) {
-            return cb(explain(err, 'Unable to parse package.json'))
-          }
-        }
-        gotPackageJson(pkg || {})
-      })
-    else
-      gotPackageJson({})
-  })
-
-  function gotPackageJson(p) {
+  readPackageJson(dir, function (err, p) {
+    if (err)
+      return cb(explain(err, 'Unable to read package.json'))
     pkg = p
     var errs = checkPackageJson(pkg)
     if (errs) {
@@ -130,7 +146,7 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
     }
 
     done(once(gotFileStreams))
-  }
+  })
 
   function addFile(file, cb) {
     if (file == 'package.json') return cb(null, null)
@@ -200,7 +216,7 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
       pkg: pkg
     }
     sbot.publish(msg, function (err, data) {
-      if (err) return cb(explain(err, 'Unable to publish package: ' + err))
+      if (err) return cb(explain(err, 'Unable to publish package'))
       cb(null, data.key)
     })
   }
@@ -315,7 +331,7 @@ SSBPM.prototype.require = function (moduleName, cb) {
 function writeBlob(blobs, hash, filename, cb) {
   mkdirp(path.dirname(filename), function (err) {
     if (err)
-      return cb(explain(err, 'Unable to create directory for blob: ' + err))
+      return cb(explain(err, 'Unable to create directory for blob'))
     pull(
       blobs.get(hash),
       toPull.sink(fs.createWriteStream(filename), cb)
@@ -326,7 +342,7 @@ function writeBlob(blobs, hash, filename, cb) {
 function writeFile(filename, data, cb) {
   mkdirp(path.dirname(filename), function (err) {
     if (err)
-      return cb(explain(err, 'Unable to create directory for blob: ' + err))
+      return cb(explain(err, 'Unable to create directory for blob'))
     fs.writeFile(filename, data, cb)
   })
 }
@@ -352,9 +368,33 @@ SSBPM.prototype.installToFs = function (key, opt, cb) {
       writeBlob(blobs, fileHashes[filename], path.join(dir, filename), done())
     }
 
-    var pkgJson = JSON.stringify(pkg, null, 2)
-    writeFile(path.join(dir, 'package.json'), pkgJson, done())
+    writePackageJson(dir, pkg, done())
+
+    if (opt.save) {
+      updatePackageJson(cwd, [
+        ['dependencies', pkg.name, pkg.version ? '^' + pkg.version : '*'],
+        ['ssbpm', 'dependencies', pkg.name, key]
+      ], done())
+    }
 
     done(once(cb))
+  })
+}
+
+function setKeyPath(obj, keyPath) {
+  keyPath = keyPath.slice()
+  var value = keyPath.pop()
+  var key = keyPath.pop()
+  keyPath.reduce(function (obj, key) {
+    return obj[key] || (obj[key] = {})
+  }, obj)[key] = value
+}
+
+function updatePackageJson(dir, keyPaths, cb) {
+  // TODO: prevent race conditions
+  readPackageJson(dir, function (err, pkg) {
+    if (err) return cb(err)
+    keyPaths.forEach(setKeyPath.bind(null, pkg))
+    writePackageJson(dir, pkg, cb)
   })
 }

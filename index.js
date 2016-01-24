@@ -19,6 +19,10 @@ function once(fn) {
   }
 }
 
+function hasOwnProperty(obj, prop) {
+  return Object.prototype.hasOwnProperty.call(obj, prop);
+}
+
 function createHash () {
   var hash = crypto.createHash('sha256')
   var hasher = pull.through(function (data) {
@@ -295,10 +299,11 @@ function SSBPM_getPkgRequire(key, cb) {
   })
 
   function getJSModule(name) {
-    var buf = fileData[name]
-    if (!buf) return
+    if (!hasOwnProperty(fileData, name))
+      return
 
-    var fn = new Function('require', 'module', 'exports', buf.toString())
+    var fn = new Function('require', 'module', 'exports',
+      fileData[name].toString())
     // http://wiki.commonjs.org/wiki/Modules/1.1.1
     var outerName = name
     var moduleRequire = function (name) {
@@ -316,9 +321,8 @@ function SSBPM_getPkgRequire(key, cb) {
   }
 
   function getJSONModule(name) {
-    var buf = fileData[name]
-    if (buf)
-      return JSON.parse(buf.toString())
+    if (hasOwnProperty(fileData, name))
+      return JSON.parse(fileData[name].toString())
   }
 
   function getFileModule(name) {

@@ -255,6 +255,7 @@ function loadBlob(blobs, hash, name, store, cb) {
 function SSBPM_getPkgRequire(key, cb) {
   var blobs = this.sbot.blobs
   var fileData = {}
+  var pkgJson
 
   var pkgCache = this.packageCache
   if (pkgCache[key])
@@ -277,7 +278,7 @@ function SSBPM_getPkgRequire(key, cb) {
     var ssbpmData = pkg.ssbpm || {}
     var fileHashes = ssbpmData.files || {}
     var done = multicb()
-    fileData['package.json'] = pkg
+    pkgJson = fileData['package.json'] = pkg
 
     // Load files from blobs, but don't execute JS in them yet.
     // Just get them ready so they can be loaded synchronously
@@ -293,18 +294,64 @@ function SSBPM_getPkgRequire(key, cb) {
     }))
   })
 
-  function getModule(name) {
-    // try js
-    // try json
+  function getJSModule(name) {
     var buf = fileData[name]
+    if (!buf) return
 
-    // TODO
+    var fn = new Function('require', 'module', 'exports', buf.toString())
+    // http://wiki.commonjs.org/wiki/Modules/1.1.1
+    var outerName = name
+    var moduleRequire = function (name) {
+      return require(path.join(outerName, name))
+    }
+    moduleRequire.main = module
+    var module = {
+      id: pkgJson.name,
+      exports: exports
+    }
+    // execute the module
+    fn(require, module, exports)
+    var result = module.exports
+    return result
+  }
 
-    return buf
+  function getJSONModule(name) {
+    var buf = fileData[name]
+    if (buf)
+      return JSON.parse(buf.toString())
+  }
+
+  function getFileModule(name) {
+    name = path.normalize(name)
+    var i = name.lastIndexOf('.')
+    var extension = name.substr(i + 1)
+    switch (extension) {
+      case 'js':
+        return getJSModule(name)
+      case 'json':
+        return getJSONModule(name)
+      default: return (
+        getJSModule(name) ||
+        getJSModule(name + '.js') ||
+        getJSONModule(name + '.json'))
+    }
+  }
+
+  function getModule(name) {
+    if (name == '.')
+      return getFileModule('index')
+
+    if (/^\.\.?\//.test(name)) {
+      if (/\/$/.test(name))
+        return getFileModule(name + 'index')
+      return getFileModule(name) || getFileModule(name + '/index')
+    }
+
+    return getDepModule(name)
   }
 
   function require(name) {
-    var module = getModule(path.normalize(name))
+    var module = getModule(name)
     if (!module) {
       var err = new Error('Cannot find module \'' + name + '\'')
       err.code = 'MODULE_NOT_FOUND'
@@ -314,13 +361,9 @@ function SSBPM_getPkgRequire(key, cb) {
   }
 }
 
-SSBPM.prototype.require = function (moduleName, cb) {
-  var i = moduleName.indexOf('/'), key, modulePath
-  if (i !== -1) {
-    key = moduleName.substr(0, i)
-    modulePath = moduleName.substr(i + 1)
-  } else {
-    key = moduleName
+SSBPM.prototype.require = function (key, modulePath, cb) {
+  if (typeof modulePath === 'function') {
+    cb = modulePath
     modulePath = '.'
   }
 

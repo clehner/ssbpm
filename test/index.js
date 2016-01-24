@@ -63,16 +63,18 @@ tape('publish a package and install it from another client', function (t) {
         t.equal(example && example.increment(99), 100,
           'run code from the example package')
 
-          /*
         // load module using ssbpm
         ssbpmA.require(pkgId, function (err, example) {
           t.error(err, 'load module using ssbpm require')
-          */
+
+          if (!example)
+            t.fail('module did not load')
+          else
+            t.equal(example.increment(100), 101,
+              'run code from the example package')
 
           t.end()
-          /*
         })
-        */
       })
     })
   })

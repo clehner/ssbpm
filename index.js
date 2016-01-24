@@ -10,15 +10,6 @@ var explain = require('explain-error')
 
 module.exports = SSBPM
 
-function once(fn) {
-  var called = false
-  return function () {
-    if (called) return
-    called = true
-    fn.apply(this, arguments)
-  }
-}
-
 function hasOwnProperty(obj, prop) {
   return Object.prototype.hasOwnProperty.call(obj, prop);
 }
@@ -149,7 +140,7 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
       addDir('.', done())
     }
 
-    done(once(gotFileStreams))
+    done(gotFileStreams)
   })
 
   function addFile(file, cb) {
@@ -203,14 +194,14 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
         }))
     })
 
-    done(once(function (err, hashes) {
+    done(function (err, hashes) {
       var fileHashes = {}
       for (var i = 0; i < results.length; i++) {
         if (results[i])
           fileHashes[results[i].filename] = hashes[i]
       }
       gotFileHashes(fileHashes)
-    }))
+    })
   }
 
   function gotFileHashes(files) {
@@ -330,10 +321,10 @@ function SSBPM_getPkgRequire(key, cb) {
       loadPackageRequire(name, deps[name], done())
     }
 
-    done(once(function (err) {
+    done(function (err) {
       if (err) return cb(err)
       cb(err, require)
-    }))
+    })
   })
 
   function getExtModule(name, ext) {
@@ -478,7 +469,7 @@ SSBPM.prototype.installToFs = function (key, opt, cb) {
       ], done())
     }
 
-    done(once(cb))
+    done(cb)
   })
 }
 

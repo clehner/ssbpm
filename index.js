@@ -256,9 +256,33 @@ function loadBlob(blobs, hash, name, store, cb) {
   )
 }
 
+var loaders = {
+  json: function (buf) {
+    return JSON.parse(buf.toString())
+  },
+  js: function (buf, outerName, pkg, outerRequire) {
+    var fn = new Function('require', 'module', 'exports', buf.toString())
+    delete buf
+    // http://wiki.commonjs.org/wiki/Modules/1.1.1
+    var require = function (name) {
+      return outerRequire(outerName, name)
+    }
+    var exports = {}
+    var module = {
+      id: pkg.name,
+      exports: exports
+    }
+    require.main = module
+    fn(require, module, exports)
+    exports = module.exports
+    return exports
+  }
+}
+
 function SSBPM_getPkgRequire(key, cb) {
   var blobs = this.sbot.blobs
   var fileData = {}
+  var cache = {}
   var pkgJson
 
   var pkgCache = this.packageCache
@@ -298,31 +322,15 @@ function SSBPM_getPkgRequire(key, cb) {
     }))
   })
 
-  function getJSModule(name) {
+  function getExtModule(name, ext) {
+    if (hasOwnProperty(cache, name))
+      return cache[name]
     if (!hasOwnProperty(fileData, name))
       return
 
-    var fn = new Function('require', 'module', 'exports',
-      fileData[name].toString())
-    // http://wiki.commonjs.org/wiki/Modules/1.1.1
-    var outerName = name
-    var moduleRequire = function (name) {
-      return require(path.join(outerName, name))
-    }
-    moduleRequire.main = module
-    var module = {
-      id: pkgJson.name,
-      exports: exports
-    }
-    // execute the module
-    fn(require, module, exports)
-    var result = module.exports
+    var result = loaders[ext](fileData[name], name, pkgJson, require)
+    cache[name] = result
     return result
-  }
-
-  function getJSONModule(name) {
-    if (hasOwnProperty(fileData, name))
-      return JSON.parse(fileData[name].toString())
   }
 
   function getFileModule(name) {
@@ -331,37 +339,48 @@ function SSBPM_getPkgRequire(key, cb) {
     var extension = name.substr(i + 1)
     switch (extension) {
       case 'js':
-        return getJSModule(name)
+        return getExtModule(name, 'js')
       case 'json':
-        return getJSONModule(name)
+        return getExtModule(name, 'json')
       default: return (
-        getJSModule(name) ||
-        getJSModule(name + '.js') ||
-        getJSONModule(name + '.json'))
+        getExtModule(name, 'js') ||
+        getExtModule(name + '.js', 'js') ||
+        getExtModule(name + '.json', 'json'))
     }
+  }
+
+  function getDepModule(name) {
+    throw new Error('Not implemented')
   }
 
   function getModule(name) {
     if (name == '.')
       return getFileModule('index')
 
-    if (/^\.\.?\//.test(name)) {
+    if (/^\.\//.test(name)) {
       if (/\/$/.test(name))
         return getFileModule(name + 'index')
       return getFileModule(name) || getFileModule(name + '/index')
     }
 
+    if (/^\.\.?\//.test(name)) {
+      throw new Error('Cannot require outside root')
+    }
+
     return getDepModule(name)
   }
 
-  function require(name) {
-    var module = getModule(name)
-    if (!module) {
-      var err = new Error('Cannot find module \'' + name + '\'')
-      err.code = 'MODULE_NOT_FOUND'
-      throw err
-    }
-    return module
+  function require(currentPath, name) {
+    var module
+    if (currentPath === '.' || currentPath === '')
+      module = getModule(name)
+    if (module) return module
+    module = getModule(currentPath.replace(/[^\/]*$/, '') + name)
+          || getModule(currentPath + '/' + name)
+    if (module) return module
+    var err = new Error('Cannot find module \'' + name + '\'')
+    err.code = 'MODULE_NOT_FOUND'
+    throw err
   }
 }
 
@@ -376,7 +395,7 @@ SSBPM.prototype.require = function (key, modulePath, cb) {
       return cb(err)
     var module
     try {
-      module = require(modulePath)
+      module = require('.', modulePath)
     } catch(e) {
       return cb(e)
     }

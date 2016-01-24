@@ -21,7 +21,7 @@ require('ssb-client')(function (err, sbot) {
   var ssbpm = new Ssbpm(sbot)
   var pkgId = '%iI488pHHk+dMNOQlQTJJRv0W9HEMZ+NA3kUB3J1OfZg=.sha256'
   ssbpm.require(pkgId, function (err, module) {
-	/* got the module */
+    /* got the module */
   })
 })
 ```

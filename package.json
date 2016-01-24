@@ -43,6 +43,7 @@
     "index.js",
     "bin.js",
     "LICENSE",
+    "README.md",
     "defaultignore",
     "test/index.js",
     "test/example",

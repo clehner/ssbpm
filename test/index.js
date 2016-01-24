@@ -192,7 +192,7 @@ tape('install a package with dependencies', function (t) {
         ssbpm: {
           parent: wrapperPkgId,
           files: {
-            'index.js': '&18LxkIQx3IVlzg/lNQdATfd4f6Y4Y5o7rACKiakZSZQ=.sha256'
+            'index.js': '&//BSBs3rY6UxzGKxE4rl7inpX2GLok6YVIgsmNMuPQQ=.sha256'
           },
           dependencies: {
             example: examplePkgId
@@ -200,7 +200,15 @@ tape('install a package with dependencies', function (t) {
         }
       }, 'wrapper package.json updated with file hashes after publish')
 
-      t.end()
+      ssbpm.require(wrapperPkgId, function (err, wrapper) {
+        t.error(err, 'load wrapper module')
+
+        t.doesNotThrow(function () {
+          wrapper(t)
+        }, 'run code in the wrapper module')
+
+        t.end()
+      })
     })
   })
 })

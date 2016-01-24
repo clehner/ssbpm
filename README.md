@@ -30,7 +30,7 @@ require('ssb-client')(function (err, sbot) {
 
 - [x] publish modules from file system
 - [x] install modules to the file system
-- [ ] install dependency modules
+- [x] install dependency modules
 - [x] load modules from JS
 - [ ] document package.json additions and message schema
 - [ ] code auditing/trust/signing system

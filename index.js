@@ -282,8 +282,10 @@ var loaders = {
 function SSBPM_getPkgRequire(key, cb) {
   var blobs = this.sbot.blobs
   var fileData = {}
+  var depRequires = {}
   var cache = {}
   var pkgJson
+  var self = this
 
   var pkgCache = this.packageCache
   if (pkgCache[key])
@@ -301,10 +303,20 @@ function SSBPM_getPkgRequire(key, cb) {
     delete this.packageWaiting
   }
 
+  function loadPackageRequire(pkgName, pkgId, cb) {
+    SSBPM_getPkgRequire.call(self, pkgId, function (err, depRequire) {
+      if (err)
+        return cb(explain(err, 'Unable to load dependency package'))
+      depRequires[pkgName] = depRequire
+      cb()
+    })
+  }
+
   SSBPM_getPkg.call(this, key, function (err, pkg) {
     if (err) return cb(err)
     var ssbpmData = pkg.ssbpm || {}
     var fileHashes = ssbpmData.files || {}
+    var deps = ssbpmData.dependencies || {}
     var done = multicb()
     pkgJson = fileData['package.json'] = pkg
 
@@ -314,7 +326,9 @@ function SSBPM_getPkgRequire(key, cb) {
       loadBlob(blobs, fileHashes[filename], filename, fileData, done())
     }
 
-    // TODO: load dependencies recursively
+    for (var name in deps) {
+      loadPackageRequire(name, deps[name], done())
+    }
 
     done(once(function (err) {
       if (err) return cb(err)
@@ -350,7 +364,19 @@ function SSBPM_getPkgRequire(key, cb) {
   }
 
   function getDepModule(name) {
-    throw new Error('Not implemented')
+    var i = name.indexOf('/')
+    var pkgName, modulePath
+    if (i === -1) {
+      pkgName = name
+      modulePath = '.'
+    } else {
+      pkgName = name.substr(0, i)
+      modulePath = name.substr(i + 1)
+    }
+    if (!hasOwnProperty(depRequires, pkgName))
+      return
+    var depRequire = depRequires[pkgName]
+    return depRequire('.', modulePath)
   }
 
   function getModule(name) {

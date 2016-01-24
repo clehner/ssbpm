@@ -49,7 +49,7 @@ tape('publish a package and install it from another client', function (t) {
       var ssbpmA = new SSBPM(rpc)
       ssbpmA.installToFs(pkgId, {
         cwd: destDir
-      }, function (err, moduleA) {
+      }, function (err) {
         t.error(err, 'install to file system')
 
         t.equals(fs.existsSync(path.join(destDir, 'package.json')), false,
@@ -58,7 +58,7 @@ tape('publish a package and install it from another client', function (t) {
         // load modules using node's require
         var example
         t.doesNotThrow(function () {
-          example = require(path.join(destDir, 'node_modules', 'example-pkg'))
+          example = require(path.join(destDir, 'node_modules', 'example'))
         }, 'require a module of the example package')
         t.equal(example && example.increment(99), 100,
           'run code from the example package')
@@ -85,7 +85,7 @@ tape('install package using save option', function (t) {
   ssbpm.installToFs(examplePkgId, {
     cwd: destDir,
     save: true
-  }, function (err, moduleA) {
+  }, function (err) {
     t.error(err, 'install to file system')
 
     // parent dir's json should be created since the save option was used
@@ -102,11 +102,11 @@ tape('install package using save option', function (t) {
 
       t.deepEqual(pkg, {
         dependencies: {
-          'example-pkg': '*'
+          'example': '*'
         },
         ssbpm: {
           dependencies: {
-            'example-pkg': examplePkgId
+            'example': examplePkgId
           }
         }
       }, 'parent package.json updated with new dependency')
@@ -118,7 +118,7 @@ tape('install package using save option', function (t) {
 
 tape('republish package using save option', function (t) {
   var dir = path.join(sbotOpts.path, 'ssbpm-example',
-    'node_modules', 'example-pkg')
+    'node_modules', 'example')
   ssbpm.publishFromFs(dir, {
     save: true
   }, function (err, pkgId) {
@@ -127,7 +127,7 @@ tape('republish package using save option', function (t) {
 
     var pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json')))
     t.deepEqual(pkg, {
-      name: 'example-pkg',
+      name: 'example',
       ssbpm: {
         parent: pkgId,
         files: {
@@ -142,7 +142,69 @@ tape('republish package using save option', function (t) {
   })
 })
 
-tape('close ssb client connection', function (t) {
+tape('install a package with dependencies', function (t) {
+  // copy the wrapper package into a temp directory so that we can
+  // install the example package into it
+  // since we don't know the example package's ID yet
+  var wrapperPkgDir = path.join(sbotOpts.path, 'ssbpm-wrapper-pkg')
+  var wrapperPkgJsonFilename = path.join(wrapperPkgDir, 'package.json')
+  var wrapperSrcDir = path.join(__dirname, './wrapper')
+  try {
+    fs.mkdirSync(wrapperPkgDir)
+    ;['index.js', 'package.json'].forEach(function (filename) {
+      fs.writeFileSync(path.join(wrapperPkgDir, filename),
+        fs.readFileSync(path.join(wrapperSrcDir, filename)))
+    })
+  } catch(e) {
+    return t.end(e)
+  }
+  t.pass('copied wrapper package into temp dir')
+
+  // install example pkg as a dependency of wrapper pkg
+  ssbpm.installToFs(examplePkgId, {
+    cwd: wrapperPkgDir,
+    save: true
+  }, function (err) {
+    t.error(err, 'install example pkg into wrapper pkg dir')
+
+    t.deepEqual(JSON.parse(fs.readFileSync(wrapperPkgJsonFilename)), {
+      name: 'wrapper',
+      dependencies: {
+        example: '*'
+      },
+      ssbpm: {
+        dependencies: {
+          example: examplePkgId
+        }
+      }
+    }, 'wrapper package.json updated with installed example pkg dependency')
+
+    ssbpm.publishFromFs(wrapperPkgDir, {
+      save: true
+    }, function (err, wrapperPkgId) {
+      t.error(err, 'publish from file system')
+
+      t.deepEqual(JSON.parse(fs.readFileSync(wrapperPkgJsonFilename)), {
+        name: 'wrapper',
+        dependencies: {
+          example: '*'
+        },
+        ssbpm: {
+          parent: wrapperPkgId,
+          files: {
+            'index.js': '&18LxkIQx3IVlzg/lNQdATfd4f6Y4Y5o7rACKiakZSZQ=.sha256'
+          },
+          dependencies: {
+            example: examplePkgId
+          }
+        }
+      }, 'wrapper package.json updated with file hashes after publish')
+
+      t.end()
+    })
+  })
+})
+
+tape.onFinish(function () {
   sbot.close(true)
-  t.end()
 })

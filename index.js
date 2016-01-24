@@ -437,7 +437,7 @@ SSBPM.prototype.installToFs = function (key, opt, cb) {
     var ssbpmData = pkg.ssbpm || {}
     var fileHashes = ssbpmData.files || {}
     var dir = path.join(cwd, 'node_modules', name)
-    var done = multicb()
+    var done = multicb({pluck: 1})
 
     for (var filename in fileHashes) {
       writeBlob(blobs, fileHashes[filename], path.join(dir, filename), done())

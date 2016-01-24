@@ -1,0 +1,6 @@
+{
+  "name": "wrapper",
+  "dependencies": {
+    "example": "*"
+  }
+}

@@ -45,6 +45,7 @@
     "LICENSE",
     "defaultignore",
     "test/index.js",
-    "test/example"
+    "test/example",
+    "test/wrapper"
   ]
 }

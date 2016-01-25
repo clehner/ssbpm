@@ -7,6 +7,7 @@ var pull = require('pull-stream')
 var toPull = require('stream-to-pull-stream')
 var mkdirp = require('mkdirp')
 var explain = require('explain-error')
+var ssbpmPkg = require('./package.json')
 
 module.exports = SSBPM
 
@@ -76,20 +77,19 @@ function writePackageJson(dir, pkg, cb) {
 }
 
 function checkPackageJson(pkg) {
-  var ssbpmPkg = pkg.ssbpm || {}
-  var ssbpmDependencies = ssbpmPkg.dependencies || {}
-  var ssbpmDevDependencies = ssbpmPkg.devDependencies || {}
+  var ssbpmDependencies = pkg.ssbpm && pkg.ssbpm.dependencies || {}
+  var ssbpmDevDependencies = pkg.ssbpm && pkg.ssbpm.devDependencies || {}
   var notInDeps = []
   var notInDevDeps = []
 
   if (pkg.dependencies)
     for (var name in pkg.dependencies)
-      if (!ssbpmDependencies[name])
+      if (!ssbpmDependencies[name] && !ssbpmPkg.dependencies[name])
         notInDeps.push(name)
 
   if (pkg.devDependencies)
     for (var name in pkg.devDependencies)
-      if (!ssbpmDevDependencies[name])
+      if (!ssbpmDevDependencies[name] && !ssbpmPkg.dependencies[name])
         notInDevDeps.push(name)
 
   return [
@@ -324,7 +324,7 @@ function SSBPM_getPkgRequire(key, cb) {
 
     done(function (err) {
       if (err) return cb(err)
-      cb(err, require)
+      cb(err, externalRequire)
     })
   })
 
@@ -334,7 +334,7 @@ function SSBPM_getPkgRequire(key, cb) {
     if (!hasOwnProperty(fileData, name))
       return
 
-    var result = loaders[ext](fileData[name], name, pkgJson, require)
+    var result = loaders[ext](fileData[name], name, pkgJson, externalRequire)
     cache[name] = result
     return result
   }
@@ -388,7 +388,7 @@ function SSBPM_getPkgRequire(key, cb) {
     return getDepModule(name)
   }
 
-  function require(currentPath, name) {
+  function externalRequire(currentPath, name) {
     var module
     if (currentPath === '.' || currentPath === '')
       module = getModule(name)
@@ -396,6 +396,12 @@ function SSBPM_getPkgRequire(key, cb) {
     module = getModule(currentPath.replace(/[^\/]*$/, '') + name)
           || getModule(currentPath + '/' + name)
     if (module) return module
+
+    // allow using ssbpm's own dependencies with global require
+    // TODO: test this
+    if (ssbpmPkg.dependencies[name])
+      return require(name)
+
     var err = new Error('Cannot find module \'' + name + '\'')
     err.code = 'MODULE_NOT_FOUND'
     throw err

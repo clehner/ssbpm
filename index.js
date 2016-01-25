@@ -108,7 +108,7 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
     opt = {}
   }
 
-  var ignoreFilter = function () { return false }
+  var ignoreFilter
   var done = multicb({pluck: 1})
   var sbot = this.sbot
   var pkg
@@ -125,18 +125,19 @@ SSBPM.prototype.publishFromFs = function (dir, opt, cb) {
         throw errs
     }
 
+    // https://docs.npmjs.com/misc/developers#keeping-files-out-of-your-package
+    var ignores = readFileNoErr(path.join(__dirname, 'defaultignore')) +
+      (readFileNoErr(path.join(dir, '.npmignore')) ||
+        readFileNoErr(path.join(dir, '.gitignore')))
+    ignoreFilter = ignore.compile(ignores)
+
     if (pkg.files) {
       // package.json lists files
       for (var i = 0; i < pkg.files.length; i++) {
         addFile(path.join(dir, pkg.files[i]), done())
       }
     } else {
-      // walk the fs to get the list of files, respecting the ignore list
-      // https://docs.npmjs.com/misc/developers#keeping-files-out-of-your-package
-      var ignores = readFileNoErr(path.join(__dirname, 'defaultignore')) +
-        (readFileNoErr(path.join(dir, '.npmignore')) ||
-         readFileNoErr(path.join(dir, '.gitignore')))
-      ignoreFilter = ignore.compile(ignores)
+      // walk the fs to get the list of files
       addDir('.', done())
     }
 
